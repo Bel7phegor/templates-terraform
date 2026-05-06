@@ -4,6 +4,19 @@ variable "region" {
   default     = "ap-southeast-3"
 }
 
+variable "project" {
+  description = "Tên project"
+  type        = string
+  default     = "lab-test"
+}
+
+# TAGS CHUNG
+variable "environment" {
+  description = "Môi trường: dev | staging | prod"
+  type        = string
+  default     = "dev"
+}
+
 variable "vpc_name" {
   description = "Name VPC"
   type        = string
@@ -60,7 +73,7 @@ variable "private_subnets" {
   ]
 }
 
-
+# IGW / NAT
 variable "enable_igw" {
   description = "Tạo Internet Gateway cho public subnets"
   type        = bool
@@ -80,4 +93,113 @@ variable "single_nat_gateway" {
   EOT
   type        = bool
   default     = true
+}
+
+# IAM ROLES
+variable "eks_cluster_role_name" {
+  description = "IAM Role name cho EKS Cluster"
+  type        = string
+  default     = "eks-cluster-role"
+}
+
+variable "eks_nodegroup_role_name" {
+  description = "IAM Role name cho EKS Node Group"
+  type        = string
+  default     = "eks-nodegroup-role"
+}
+
+variable "bastion_instance_role_name" {
+  description = "IAM Role name cho EC2 Bastion"
+  type        = string
+  default     = "ec2-eks-access-role"
+}
+
+# EKS CLUSTER
+variable "enable_eks" {
+  description = "Bật/tắt EKS Cluster"
+  type        = bool
+  default     = true
+}
+
+variable "eks_cluster_name" {
+  type    = string
+  default = "lab-test-eks"
+}
+
+variable "eks_cluster_version" {
+  type    = string
+  default = "1.32"
+}
+
+variable "enable_eks_auto_mode" {
+  description = "Bật EKS Auto Mode, tắt để dùng custom node group"
+  type        = bool
+  default     = false
+}
+
+variable "eks_endpoint_access" {
+  description = "Chế độ truy cập cluster endpoint: public, private, public_and_private"
+  type        = string
+  default     = "public_and_private"
+
+  validation {
+    condition     = contains(["public", "private", "public_and_private"], var.eks_endpoint_access)
+    error_message = "Giá trị hợp lệ: public | private | public_and_private"
+  }
+}
+
+# NODE GROUP
+variable "enable_nodegroup" {
+  description = "Bật/tắt node group - tự động tắt nếu enable_eks = false hoặc enable_eks_auto_mode = true"
+  type        = bool
+  default     = true
+}
+
+variable "nodegroup_name" {
+  type    = string
+  default = "lab-test-nodegroup"
+}
+
+variable "nodegroup_instance_types" {
+  type    = list(string)
+  default = ["t3.medium"]
+}
+
+variable "nodegroup_desired_size" {
+  type    = number
+  default = 1
+}
+
+variable "nodegroup_min_size" {
+  type    = number
+  default = 1
+}
+
+variable "nodegroup_max_size" {
+  type    = number
+  default = 1
+}
+
+variable "nodegroup_disk_size" {
+  description = "Dung lượng disk mỗi node (GB)"
+  type        = number
+  default     = 20
+}
+
+# BASTION
+variable "enable_bastion" {
+  description = "Bật/tắt bastion - tự động tắt nến enable_eks = false"
+  type        = bool
+  default     = true
+}
+
+variable "bastion_instance_type" {
+  type    = string
+  default = "t3.large"
+}
+
+variable "bastion_key_name" {
+  description = "Key pair để SSH, để trống nếu dùng SSM"
+  type        = string
+  default     = "key-pem"
 }

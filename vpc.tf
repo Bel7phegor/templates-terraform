@@ -3,9 +3,10 @@ resource "aws_vpc" "main" {
   enable_dns_support   = var.enable_dns_support
   enable_dns_hostnames = var.enable_dns_hostnames
 
-  tags = {
-    Name = var.vpc_name
-  }
+  tags = merge(local.common_tags, {
+    Name      = var.vpc_name
+    Component = "vpc"
+  })
 }
 
 resource "aws_subnet" "public" {
@@ -16,10 +17,11 @@ resource "aws_subnet" "public" {
   availability_zone       = var.public_subnets[count.index].az
   map_public_ip_on_launch = var.map_public_ip_on_launch
 
-  tags = {
-    Name = "${var.vpc_name}-${var.public_subnets[count.index].name}"
-    Tier = "public"
-  }
+  tags = merge(local.common_tags, {
+    Name      = "${var.vpc_name}-${var.public_subnets[count.index].name}"
+    Component = "subnet"
+    Tier      = "public"
+  })
 }
 
 resource "aws_subnet" "private" {
@@ -29,8 +31,9 @@ resource "aws_subnet" "private" {
   cidr_block        = var.private_subnets[count.index].cidr
   availability_zone = var.private_subnets[count.index].az
 
-  tags = {
-    Name = "${var.vpc_name}-${var.private_subnets[count.index].name}"
-    Tier = "private"
-  }
+  tags = merge(local.common_tags, {
+    Name      = "${var.vpc_name}-${var.private_subnets[count.index].name}"
+    Component = "subnet"
+    Tier      = "private"
+  })
 }

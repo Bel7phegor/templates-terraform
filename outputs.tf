@@ -1,3 +1,4 @@
+# VPC
 output "vpc_id" {
   value = aws_vpc.main.id
 }
@@ -10,14 +11,32 @@ output "private_subnet_ids" {
   value = aws_subnet.private[*].id
 }
 
-output "igw_id" {
-  value = var.enable_igw ? aws_internet_gateway.main[0].id : null
-}
-
-output "nat_gateway_ids" {
-  value = var.enable_nat_gateway ? aws_nat_gateway.main[*].id : []
-}
-
 output "nat_public_ips" {
   value = var.enable_nat_gateway ? aws_eip.nat[*].public_ip : []
+}
+
+# EKS
+output "eks_cluster_name" {
+  value = var.enable_eks ? aws_eks_cluster.main[0].name : null
+}
+
+output "eks_cluster_endpoint" {
+  value = var.enable_eks ? aws_eks_cluster.main[0].endpoint : null
+}
+
+output "eks_cluster_version" {
+  value = var.enable_eks ? aws_eks_cluster.main[0].version : null
+}
+
+output "eks_endpoint_access_mode" {
+  value = var.enable_eks ? var.eks_endpoint_access : null
+}
+
+output "nodegroup_status" {
+  value = local.should_create_nodegroup ? aws_eks_node_group.main[0].status : "disabled"
+}
+
+# BASTION
+output "bastion_private_ip" {
+  value = local.should_create_bastion ? aws_instance.bastion[0].private_ip : null
 }

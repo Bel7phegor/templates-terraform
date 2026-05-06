@@ -7,14 +7,15 @@ resource "aws_route_table" "public" {
     gateway_id = aws_internet_gateway.main[0].id
   }
 
-  tags = {
-    Name = "${var.vpc_name}-rt-public"
-  }
+  tags = merge(local.common_tags, {
+    Name      = "${var.vpc_name}-rt-public"
+    Component = "route-table"
+    Tier      = "public"
+  })
 }
 
 resource "aws_route_table_association" "public" {
-  count = var.enable_igw ? length(aws_subnet.public) : 0
-
+  count          = var.enable_igw ? length(aws_subnet.public) : 0
   subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public[0].id
 }
@@ -31,14 +32,15 @@ resource "aws_route_table" "private" {
     }
   }
 
-  tags = {
-    Name = "${var.vpc_name}-rt-${var.private_subnets[count.index].name}"
-  }
+  tags = merge(local.common_tags, {
+    Name      = "${var.vpc_name}-rt-${var.private_subnets[count.index].name}"
+    Component = "route-table"
+    Tier      = "private"
+  })
 }
 
 resource "aws_route_table_association" "private" {
-  count = length(var.private_subnets)
-
+  count          = length(var.private_subnets)
   subnet_id      = aws_subnet.private[count.index].id
   route_table_id = aws_route_table.private[count.index].id
 }
