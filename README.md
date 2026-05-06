@@ -116,16 +116,6 @@ terraform apply -var="enable_nat_gateway=false"
 terraform destroy
 ```
 
-## Chi phí ước tính (ap-southeast-1)
-
-| Resource | Chi phí |
-|---|---|
-| VPC, Subnet, IGW | Miễn phí |
-| NAT Gateway | ~$0.059/giờ (~$43/tháng) |
-| Data transfer qua NAT | $0.059/GB |
-
-Đặt `enable_nat_gateway = false` khi không sử dụng để tránh phát sinh chi phí.
-
 ## Troubleshooting
 
 **Lỗi credentials:**
