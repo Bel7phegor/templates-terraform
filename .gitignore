@@ -1,0 +1,34 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+tfplan
+*.tfplan
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Variables (có thể chứa secrets)
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# AWS
+.aws/
+*.pem
+*.key
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
