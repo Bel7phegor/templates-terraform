@@ -26,10 +26,8 @@ resource "aws_route_table" "private" {
   dynamic "route" {
     for_each = var.enable_nat_gateway ? [1] : []
     content {
-      cidr_block = "0.0.0.0/0"
-      nat_gateway_id = var.single_nat_gateway
-        ? aws_nat_gateway.main[0].id          # dùng chung 1 NAT
-        : aws_nat_gateway.main[count.index].id # NAT riêng mỗi subnet
+      cidr_block     = "0.0.0.0/0"
+      nat_gateway_id = var.single_nat_gateway ? aws_nat_gateway.main[0].id : aws_nat_gateway.main[count.index].id
     }
   }
 
