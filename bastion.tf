@@ -41,33 +41,53 @@ resource "aws_instance" "bastion" {
   user_data = <<-EOF
     #!/bin/bash
     set -e
+    exec > /var/log/userdata.log 2>&1
+
     yum update -y
     mkdir -p /tools && cd /tools
 
-    # kubectl
-    curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.32.0/2025-01-22/bin/linux/amd64/kubectl
+    # kubectl — dùng dl.k8s.io thay vì s3 eks (tránh lỗi XML)
+    KUBECTL_VERSION=$(curl -Ls https://dl.k8s.io/release/stable.txt)
+    curl -LO "https://dl.k8s.io/release/$${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
     chmod +x kubectl && mv kubectl /usr/local/bin/
+    kubectl version --client
 
     # helm
     curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    helm version
 
-    # kubeconfig
+    # kubeconfig — export rõ ràng
+    mkdir -p /root/.kube
     aws eks update-kubeconfig \
       --region ${data.aws_region.current.name} \
-      --name ${aws_eks_cluster.main[0].name}
+      --name ${aws_eks_cluster.main[0].name} \
+      --kubeconfig /root/.kube/config
 
-    # ── INGRESS NGINX ───────────────────────────────────────────────
+    export KUBECONFIG=/root/.kube/config
+
+    # Ghi vào bashrc để login sau vẫn dùng được
+    echo 'export KUBECONFIG=/root/.kube/config' >> /root/.bashrc
+
+    # Chờ nodes sẵn sàng
+    kubectl wait --for=condition=Ready nodes --all --timeout=300s
+
+    # ingress-nginx
     helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
     helm repo update
+
+    PUBLIC_SUBNET_1="${aws_subnet.public[0].id}"
+    PUBLIC_SUBNET_2="${aws_subnet.public[1].id}"
 
     helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
       --namespace ingress-nginx \
       --create-namespace \
       --set controller.service.type=LoadBalancer \
       --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
+      --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing \
+      --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-subnets"="$${PUBLIC_SUBNET_1}\,$${PUBLIC_SUBNET_2}" \
       --wait --timeout 5m
 
-    # ── CERT MANAGER (bắt buộc trước Rancher) ──────────────────────
+    # cert-manager
     helm repo add jetstack https://charts.jetstack.io
     helm repo update
 
@@ -77,17 +97,15 @@ resource "aws_instance" "bastion" {
       --set crds.enabled=true \
       --wait --timeout 5m
 
-    # Chờ cert-manager webhook sẵn sàng
     sleep 30
 
-    # ── RANCHER ────────────────────────────────────────────────────
-    helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
-    helm repo update
-
-    # Lấy hostname của ingress-nginx load balancer
+    # Rancher
     RANCHER_HOSTNAME=$(kubectl get svc ingress-nginx-controller \
       -n ingress-nginx \
       -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+
+    helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
+    helm repo update
 
     helm upgrade --install rancher rancher-stable/rancher \
       --namespace cattle-system \
@@ -98,8 +116,7 @@ resource "aws_instance" "bastion" {
       --set replicas=${var.rancher_replicas} \
       --wait --timeout 10m
 
-    echo "Rancher installed at: https://$${RANCHER_HOSTNAME}"
-    echo "Bootstrap password: ${var.rancher_bootstrap_password}"
+    echo "Rancher URL: https://$${RANCHER_HOSTNAME}"
   EOF
 
   tags = merge(local.common_tags, {
