@@ -148,20 +148,10 @@ variable "eks_endpoint_access" {
   }
 }
 
-variable "bastion_eks_access_policy" {
-  description = "EKS access policy gắn cho bastion: AmazonEKSClusterAdminPolicy | AmazonEKSAdminPolicy | AmazonEKSEditPolicy | AmazonEKSViewPolicy"
+variable "bastion_eks_access_policy_arn" {
+  description = "Full ARN của EKS access policy, lấy từ: aws eks list-access-policies"
   type        = string
-  default     = "AmazonEKSClusterAdminPolicy"
-
-  validation {
-    condition = contains([
-      "AmazonEKSClusterAdminPolicy",
-      "AmazonEKSAdminPolicy",
-      "AmazonEKSEditPolicy",
-      "AmazonEKSViewPolicy"
-    ], var.bastion_eks_access_policy)
-    error_message = "Giá trị hợp lệ: AmazonEKSClusterAdminPolicy | AmazonEKSAdminPolicy | AmazonEKSEditPolicy | AmazonEKSViewPolicy"
-  }
+  default     = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
 }
 
 # NODE GROUP

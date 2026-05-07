@@ -90,7 +90,7 @@ resource "aws_eks_access_policy_association" "bastion" {
 
   cluster_name  = aws_eks_cluster.main[0].name
   principal_arn = data.aws_iam_role.bastion_for_eks[0].arn
-  policy_arn    = "arn:aws:eks::aws:cluster-policy/${var.bastion_eks_access_policy}"
+  policy_arn    = var.bastion_eks_access_policy_arn
 
   access_scope {
     type = "cluster"
