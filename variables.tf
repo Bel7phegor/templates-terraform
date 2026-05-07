@@ -148,6 +148,22 @@ variable "eks_endpoint_access" {
   }
 }
 
+variable "bastion_eks_access_policy" {
+  description = "EKS access policy gắn cho bastion: AmazonEKSClusterAdminPolicy | AmazonEKSAdminPolicy | AmazonEKSEditPolicy | AmazonEKSViewPolicy"
+  type        = string
+  default     = "AmazonEKSClusterAdminPolicy"
+
+  validation {
+    condition = contains([
+      "AmazonEKSClusterAdminPolicy",
+      "AmazonEKSAdminPolicy",
+      "AmazonEKSEditPolicy",
+      "AmazonEKSViewPolicy"
+    ], var.bastion_eks_access_policy)
+    error_message = "Giá trị hợp lệ: AmazonEKSClusterAdminPolicy | AmazonEKSAdminPolicy | AmazonEKSEditPolicy | AmazonEKSViewPolicy"
+  }
+}
+
 # NODE GROUP
 variable "enable_nodegroup" {
   description = "Bật/tắt node group - tự động tắt nếu enable_eks = false hoặc enable_eks_auto_mode = true"

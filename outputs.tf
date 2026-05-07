@@ -40,3 +40,11 @@ output "nodegroup_status" {
 output "bastion_private_ip" {
   value = local.should_create_bastion ? aws_instance.bastion[0].private_ip : null
 }
+
+output "bastion_eks_access_policy" {
+  value = local.should_create_bastion ? var.bastion_eks_access_policy : null
+}
+
+output "bastion_role_arn" {
+  value = local.should_create_bastion ? data.aws_iam_role.bastion_for_eks[0].arn : null
+}

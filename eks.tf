@@ -8,6 +8,11 @@ data "aws_iam_role" "eks_nodegroup" {
   name  = var.eks_nodegroup_role_name
 }
 
+data "aws_iam_role" "bastion_for_eks" {
+  count = local.should_create_bastion ? 1 : 0
+  name  = var.bastion_instance_role_name
+}
+
 resource "aws_eks_cluster" "main" {
   count    = var.enable_eks ? 1 : 0
   name     = var.eks_cluster_name
@@ -61,4 +66,35 @@ resource "aws_eks_cluster" "main" {
   })
 
   depends_on = [aws_security_group.eks_cluster]
+}
+
+# Cấp quyền cho IAM Role của bastion vào EKS cluster
+resource "aws_eks_access_entry" "bastion" {
+  count = local.should_create_bastion ? 1 : 0
+
+  cluster_name  = aws_eks_cluster.main[0].name
+  principal_arn = data.aws_iam_role.bastion_for_eks[0].arn
+  type          = "STANDARD"
+
+  tags = merge(local.common_tags, {
+    Name      = "${var.project}-bastion-eks-access"
+    Component = "eks-access"
+  })
+
+  depends_on = [aws_eks_cluster.main]
+}
+
+# Gắn policy cụ thể vào access entry
+resource "aws_eks_access_policy_association" "bastion" {
+  count = local.should_create_bastion ? 1 : 0
+
+  cluster_name  = aws_eks_cluster.main[0].name
+  principal_arn = data.aws_iam_role.bastion_for_eks[0].arn
+  policy_arn    = "arn:aws:eks::aws:cluster-policy/${var.bastion_eks_access_policy}"
+
+  access_scope {
+    type = "cluster"
+  }
+
+  depends_on = [aws_eks_access_entry.bastion]
 }
