@@ -203,3 +203,82 @@ variable "bastion_key_name" {
   type        = string
   default     = "key-pem"
 }
+
+variable "nodegroup_max_unavailable_type" {
+  description = "Loại giới hạn khi update: number | percentage"
+  type        = string
+  default     = "number"
+
+  validation {
+    condition     = contains(["number", "percentage"], var.nodegroup_max_unavailable_type)
+    error_message = "Giá trị hợp lệ: number | percentage"
+  }
+}
+
+variable "nodegroup_max_unavailable_value" {
+  description = "Giá trị max unavailable khi update node (number hoặc percentage tùy type)"
+  type        = number
+  default     = 1
+}
+
+variable "nodegroup_update_strategy" {
+  description = "Chiến lược update node group: Default | Minimal"
+  type        = string
+  default     = "Default"
+
+  validation {
+    condition     = contains(["Default", "Minimal"], var.nodegroup_update_strategy)
+    error_message = "Giá trị hợp lệ: Default | Minimal"
+  }
+}
+
+# NODE GROUP — AUTO REPAIR
+variable "enable_node_auto_repair" {
+  description = "Bật tự động phát hiện và thay thế node bị lỗi"
+  type        = bool
+  default     = true
+}
+
+# NODE GROUP — ASG WARM POOL
+variable "enable_asg_warm_pool" {
+  description = "Bật ASG Warm Pool để giảm thời gian scale out"
+  type        = bool
+  default     = false
+}
+
+variable "warm_pool_min_size" {
+  description = "Số node tối thiểu giữ sẵn trong warm pool"
+  type        = number
+  default     = 1
+}
+
+variable "warm_pool_max_prepared_capacity" {
+  description = "Tổng số node tối đa trong warm pool (bao gồm cả đang chạy)"
+  type        = number
+  default     = 2
+}
+
+variable "warm_pool_reuse_on_scale_in" {
+  description = "true = node bị scale in quay về warm pool thay vì bị terminate"
+  type        = bool
+  default     = false
+}
+
+# NODE GROUP — REMOTE ACCESS
+variable "enable_node_remote_access" {
+  description = "Bật remote access vào nodes qua SSH key pair"
+  type        = bool
+  default     = true
+}
+
+variable "nodegroup_ssh_key_name" {
+  description = "EC2 Key Pair để SSH vào nodes (bắt buộc nếu enable_node_remote_access = true)"
+  type        = string
+  default     = "key-pem"
+}
+
+variable "nodegroup_remote_access_sg_ids" {
+  description = "Danh sách Security Group IDs được phép SSH vào nodes. Để trống = cho phép 0.0.0.0/0"
+  type        = list(string)
+  default     = []
+}
