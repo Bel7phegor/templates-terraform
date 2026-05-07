@@ -42,11 +42,23 @@ resource "aws_instance" "bastion" {
     #!/bin/bash
     yum update
     mkdir /tools && cd /tools
+    
     curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.29.3/2024-04-19/bin/linux/amd64/kubectl
     chmod +x kubectl && mv kubectl /usr/local/bin/
+    
+    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    
     aws eks update-kubeconfig \
       --region ${data.aws_region.current.name} \
       --name ${aws_eks_cluster.main[0].name}
+    
+    helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+    helm repo update
+    helm install ingress-nginx ingress-nginx/ingress-nginx \
+      --namespace ingress-nginx \
+      --create-namespace \
+      --set controller.service.type=LoadBalancer \
+      --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb
   EOF
 
   tags = merge(local.common_tags, {
