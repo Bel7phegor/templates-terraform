@@ -151,7 +151,7 @@ variable "nodegroup_instance_types" {
 
 variable "nodegroup_desired_size" {
   type    = number
-  default = 2
+  default = 1
 }
 
 variable "nodegroup_min_size" {
@@ -161,7 +161,7 @@ variable "nodegroup_min_size" {
 
 variable "nodegroup_max_size" {
   type    = number
-  default = 4
+  default = 1
 }
 
 variable "nodegroup_disk_size" {
@@ -247,4 +247,18 @@ variable "bastion_eks_access_policy_arn" {
   description = "ARN của EKS access policy, lấy từ: aws eks list-access-policies"
   type        = string
   default     = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+}
+
+# RANCHER
+variable "rancher_bootstrap_password" {
+  description = "Mật khẩu đăng nhập Rancher lần đầu"
+  type        = string
+  default     = "Admin@123456"
+  sensitive   = true
+}
+
+variable "rancher_replicas" {
+  description = "Số replicas của Rancher, môi trường lab để 1 cho nhẹ"
+  type        = number
+  default     = 1
 }

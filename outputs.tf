@@ -48,3 +48,7 @@ output "bastion_eks_access_policy" {
 output "bastion_role_arn" {
   value = local.should_create_bastion ? data.aws_iam_role.bastion_for_eks[0].arn : null
 }
+
+output "rancher_note" {
+  value = local.should_create_bastion ? "SSH vào bastion rồi chạy: kubectl get svc -n ingress-nginx để lấy hostname Rancher" : null
+}
