@@ -239,31 +239,6 @@ variable "enable_node_auto_repair" {
   default     = true
 }
 
-# NODE GROUP — ASG WARM POOL
-variable "enable_asg_warm_pool" {
-  description = "Bật ASG Warm Pool để giảm thời gian scale out"
-  type        = bool
-  default     = false
-}
-
-variable "warm_pool_min_size" {
-  description = "Số node tối thiểu giữ sẵn trong warm pool"
-  type        = number
-  default     = 1
-}
-
-variable "warm_pool_max_prepared_capacity" {
-  description = "Tổng số node tối đa trong warm pool (bao gồm cả đang chạy)"
-  type        = number
-  default     = 2
-}
-
-variable "warm_pool_reuse_on_scale_in" {
-  description = "true = node bị scale in quay về warm pool thay vì bị terminate"
-  type        = bool
-  default     = false
-}
-
 # NODE GROUP — REMOTE ACCESS
 variable "enable_node_remote_access" {
   description = "Bật remote access vào nodes qua SSH key pair"
