@@ -42,7 +42,7 @@ output "bastion_private_ip" {
 }
 
 output "bastion_eks_access_policy" {
-  value = local.should_create_bastion ? var.bastion_eks_access_policy : null
+  value = local.should_create_bastion ? var.bastion_eks_access_policy_arn : null
 }
 
 output "bastion_role_arn" {
