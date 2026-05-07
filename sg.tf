@@ -12,6 +12,18 @@ resource "aws_security_group" "eks_cluster" {
     security_groups = [aws_security_group.eks_nodes[0].id]
   }
 
+  # Thêm rule này — bastion → control plane
+  dynamic "ingress" {
+    for_each = local.should_create_bastion ? [1] : []
+    content {
+      description     = "Bastion to control plane"
+      from_port       = 443
+      to_port         = 443
+      protocol        = "tcp"
+      security_groups = [aws_security_group.bastion[0].id]
+    }
+  }
+  
   egress {
     from_port   = 0
     to_port     = 0

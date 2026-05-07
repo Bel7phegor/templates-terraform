@@ -77,7 +77,8 @@ resource "aws_eks_access_entry" "bastion" {
   cluster_name  = aws_eks_cluster.main[0].name
   principal_arn = data.aws_iam_role.bastion_for_eks[0].arn
   type          = "STANDARD"
-
+  user_name     = "eks-admin"
+  
   tags = merge(local.common_tags, {
     Name      = "${var.project}-bastion-eks-access"
     Component = "eks-access"
