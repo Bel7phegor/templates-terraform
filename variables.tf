@@ -1,54 +1,47 @@
+# GENERAL
 variable "region" {
-  description = "AWS Region"
-  type        = string
-  default     = "ap-southeast-3"
+  type    = string
+  default = "ap-southeast-3"
 }
 
 variable "project" {
-  description = "Tên project"
-  type        = string
-  default     = "lab-test"
+  type    = string
+  default = "lab-test"
 }
 
-# TAGS CHUNG
 variable "environment" {
-  description = "Môi trường: dev | staging | prod"
+  description = "dev | staging | prod"
   type        = string
   default     = "dev"
 }
 
+# VPC
 variable "vpc_name" {
-  description = "Name VPC"
-  type        = string
-  default     = "lab-test"
+  type    = string
+  default = "lab-test"
 }
 
 variable "vpc_cidr" {
-  description = "CIDR block của VPC"
-  type        = string
-  default     = "10.0.0.0/16"
+  type    = string
+  default = "10.0.0.0/16"
 }
 
 variable "enable_dns_support" {
-  description = "Bật DNS resolution trong VPC"
-  type        = bool
-  default     = true
+  type    = bool
+  default = true
 }
 
 variable "enable_dns_hostnames" {
-  description = "Bật DNS hostnames trong VPC"
-  type        = bool
-  default     = true
+  type    = bool
+  default = true
 }
 
 variable "map_public_ip_on_launch" {
-  description = "Tự động gắn Public IP khi launch EC2 vào public subnet"
-  type        = bool
-  default     = true
+  type    = bool
+  default = true
 }
 
 variable "public_subnets" {
-  description = "CIDR + AZ của Public Subnets"
   type = list(object({
     cidr = string
     az   = string
@@ -61,7 +54,6 @@ variable "public_subnets" {
 }
 
 variable "private_subnets" {
-  description = "CIDR + AZ của Private Subnets"
   type = list(object({
     cidr = string
     az   = string
@@ -75,48 +67,40 @@ variable "private_subnets" {
 
 # IGW / NAT
 variable "enable_igw" {
-  description = "Tạo Internet Gateway cho public subnets"
-  type        = bool
-  default     = true
+  type    = bool
+  default = true
 }
 
 variable "enable_nat_gateway" {
-  description = "Tạo NAT Gateway cho private subnets ra internet"
-  type        = bool
-  default     = true  
+  type    = bool
+  default = true
 }
 
 variable "single_nat_gateway" {
-  description = <<-EOT
-    true  = 1 NAT GW dùng chung cho tất cả private subnets (tiết kiệm chi phí)
-    false = Mỗi private subnet có 1 NAT GW riêng (high availability)
-  EOT
+  description = "true = 1 NAT dùng chung | false = mỗi AZ 1 NAT"
   type        = bool
   default     = true
 }
 
 # IAM ROLES
 variable "eks_cluster_role_name" {
-  description = "IAM Role name cho EKS Cluster"
-  type        = string
-  default     = "eks-cluster-role"
+  type    = string
+  default = "eks-cluster-role"
 }
 
 variable "eks_nodegroup_role_name" {
-  description = "IAM Role name cho EKS Node Group"
-  type        = string
-  default     = "eks-nodegroup-role"
+  type    = string
+  default = "eks-nodegroup-role"
 }
 
 variable "bastion_instance_role_name" {
-  description = "IAM Role name cho EC2 Bastion"
-  type        = string
-  default     = "ec2-eks-access-role"
+  type    = string
+  default = "ec2-eks-access-role"
 }
 
-# EKS CLUSTER
+# EKS
 variable "enable_eks" {
-  description = "Bật/tắt EKS Cluster"
+  description = "Bật/tắt toàn bộ EKS cluster"
   type        = bool
   default     = true
 }
@@ -128,17 +112,17 @@ variable "eks_cluster_name" {
 
 variable "eks_cluster_version" {
   type    = string
-  default = "1.35"
+  default = "1.32"
 }
 
 variable "enable_eks_auto_mode" {
-  description = "Bật EKS Auto Mode, tắt để dùng custom node group"
+  description = "Bật EKS Auto Mode, tắt để tự quản lý node group"
   type        = bool
   default     = false
 }
 
 variable "eks_endpoint_access" {
-  description = "Chế độ truy cập cluster endpoint: public, private, public_and_private"
+  description = "public | private | public_and_private"
   type        = string
   default     = "public_and_private"
 
@@ -148,15 +132,9 @@ variable "eks_endpoint_access" {
   }
 }
 
-variable "bastion_eks_access_policy_arn" {
-  description = "Full ARN của EKS access policy, lấy từ: aws eks list-access-policies"
-  type        = string
-  default     = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
-}
-
 # NODE GROUP
 variable "enable_nodegroup" {
-  description = "Bật/tắt node group - tự động tắt nếu enable_eks = false hoặc enable_eks_auto_mode = true"
+  description = "Bật/tắt node group — tự động tắt nếu enable_eks = false hoặc enable_eks_auto_mode = true"
   type        = bool
   default     = true
 }
@@ -173,7 +151,7 @@ variable "nodegroup_instance_types" {
 
 variable "nodegroup_desired_size" {
   type    = number
-  default = 1
+  default = 2
 }
 
 variable "nodegroup_min_size" {
@@ -183,35 +161,17 @@ variable "nodegroup_min_size" {
 
 variable "nodegroup_max_size" {
   type    = number
-  default = 1
+  default = 4
 }
 
 variable "nodegroup_disk_size" {
-  description = "Dung lượng disk mỗi node (GB)"
-  type        = number
-  default     = 20
+  type    = number
+  default = 20
 }
 
-# BASTION
-variable "enable_bastion" {
-  description = "Bật/tắt bastion - tự động tắt nến enable_eks = false"
-  type        = bool
-  default     = true
-}
-
-variable "bastion_instance_type" {
-  type    = string
-  default = "t3.large"
-}
-
-variable "bastion_key_name" {
-  description = "Key pair để SSH, để trống nếu dùng SSM"
-  type        = string
-  default     = "key-pem"
-}
-
+# NODE GROUP — UPDATE CONFIGURATION
 variable "nodegroup_max_unavailable_type" {
-  description = "Loại giới hạn khi update: number | percentage"
+  description = "number | percentage"
   type        = string
   default     = "number"
 
@@ -222,13 +182,13 @@ variable "nodegroup_max_unavailable_type" {
 }
 
 variable "nodegroup_max_unavailable_value" {
-  description = "Giá trị max unavailable khi update node (number hoặc percentage tùy type)"
+  description = "Giá trị max unavailable khi update node"
   type        = number
   default     = 1
 }
 
 variable "nodegroup_update_strategy" {
-  description = "Chiến lược update node group: Default | Minimal"
+  description = "Default | Minimal"
   type        = string
   default     = "Default"
 
@@ -240,7 +200,7 @@ variable "nodegroup_update_strategy" {
 
 # NODE GROUP — AUTO REPAIR
 variable "enable_node_auto_repair" {
-  description = "Bật tự động phát hiện và thay thế node bị lỗi"
+  description = "Tự động phát hiện và thay thế node bị lỗi"
   type        = bool
   default     = true
 }
@@ -253,13 +213,38 @@ variable "enable_node_remote_access" {
 }
 
 variable "nodegroup_ssh_key_name" {
-  description = "EC2 Key Pair để SSH vào nodes (bắt buộc nếu enable_node_remote_access = true)"
+  description = "EC2 Key Pair để SSH vào nodes"
   type        = string
-  default     = "key-pem"
+  default     = ""
 }
 
 variable "nodegroup_remote_access_sg_ids" {
-  description = "Danh sách Security Group IDs được phép SSH vào nodes. Để trống = cho phép 0.0.0.0/0"
+  description = "Security Group IDs được phép SSH vào nodes, để trống = cho phép 0.0.0.0/0"
   type        = list(string)
   default     = []
+}
+
+# BASTION
+variable "enable_bastion" {
+  description = "Bật/tắt EC2 Bastion — tự động tắt nếu enable_eks = false"
+  type        = bool
+  default     = true
+}
+
+variable "bastion_instance_type" {
+  type    = string
+  default = "t3.large"
+}
+
+variable "bastion_key_name" {
+  description = "Key pair SSH cho bastion, để trống nếu dùng SSM"
+  type        = string
+  default     = ""
+}
+
+# BASTION — EKS ACCESS
+variable "bastion_eks_access_policy_arn" {
+  description = "ARN của EKS access policy, lấy từ: aws eks list-access-policies"
+  type        = string
+  default     = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
 }

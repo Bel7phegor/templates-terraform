@@ -1,3 +1,4 @@
+# DATA SOURCES — IAM ROLES
 data "aws_iam_role" "eks_cluster" {
   count = var.enable_eks ? 1 : 0
   name  = var.eks_cluster_role_name
@@ -13,6 +14,7 @@ data "aws_iam_role" "bastion_for_eks" {
   name  = var.bastion_instance_role_name
 }
 
+# EKS CLUSTER
 resource "aws_eks_cluster" "main" {
   count    = var.enable_eks ? 1 : 0
   name     = var.eks_cluster_name
@@ -68,7 +70,7 @@ resource "aws_eks_cluster" "main" {
   depends_on = [aws_security_group.eks_cluster]
 }
 
-# Cấp quyền cho IAM Role của bastion vào EKS cluster
+# EKS ACCESS ENTRY — cấp quyền cho IAM Role của bastion vào cluster
 resource "aws_eks_access_entry" "bastion" {
   count = local.should_create_bastion ? 1 : 0
 
@@ -84,7 +86,7 @@ resource "aws_eks_access_entry" "bastion" {
   depends_on = [aws_eks_cluster.main]
 }
 
-# Gắn policy cụ thể vào access entry
+# EKS ACCESS POLICY ASSOCIATION — gắn policy vào access entry
 resource "aws_eks_access_policy_association" "bastion" {
   count = local.should_create_bastion ? 1 : 0
 
