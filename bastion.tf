@@ -40,20 +40,13 @@ resource "aws_instance" "bastion" {
 
   user_data = <<-EOF
     #!/bin/bash
-    exec > /var/log/userdata.log 2>&1
-    set -e
-
     yum update -y
-
-    # kubectl — download thẳng vào /usr/local/bin, không cần mv
-    KUBECTL_VERSION=$(curl -Ls https://dl.k8s.io/release/stable.txt)
-    curl -fLo /usr/local/bin/kubectl \
-      "https://dl.k8s.io/release/$${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+    curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.29.3/2024-04-19/bin/linux/amd64/kubectl
     chmod +x /usr/local/bin/kubectl
     kubectl version --client
 
     # helm
-    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
     helm version
 
     # kubeconfig
@@ -97,7 +90,6 @@ resource "aws_instance" "bastion" {
 
     sleep 30
 
-    # Rancher
     RANCHER_HOSTNAME=$(kubectl get svc ingress-nginx-controller \
       -n ingress-nginx \
       -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
