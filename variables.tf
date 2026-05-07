@@ -128,7 +128,7 @@ variable "eks_cluster_name" {
 
 variable "eks_cluster_version" {
   type    = string
-  default = "1.32"
+  default = "1.35"
 }
 
 variable "enable_eks_auto_mode" {
