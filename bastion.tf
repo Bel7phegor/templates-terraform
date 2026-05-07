@@ -40,23 +40,23 @@ resource "aws_instance" "bastion" {
 
   user_data = <<-EOF
     #!/bin/bash
-    set -e
     exec > /var/log/userdata.log 2>&1
+    set -e
 
     yum update -y
-    mkdir -p /tools && cd /tools
 
-    # kubectl — dùng dl.k8s.io thay vì s3 eks (tránh lỗi XML)
+    # kubectl — download thẳng vào /usr/local/bin, không cần mv
     KUBECTL_VERSION=$(curl -Ls https://dl.k8s.io/release/stable.txt)
-    curl -LO "https://dl.k8s.io/release/$${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
-    chmod +x kubectl && mv kubectl /usr/local/bin/
+    curl -fLo /usr/local/bin/kubectl \
+      "https://dl.k8s.io/release/$${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+    chmod +x /usr/local/bin/kubectl
     kubectl version --client
 
     # helm
-    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
     helm version
 
-    # kubeconfig — export rõ ràng
+    # kubeconfig
     mkdir -p /root/.kube
     aws eks update-kubeconfig \
       --region ${data.aws_region.current.name} \
@@ -64,8 +64,6 @@ resource "aws_instance" "bastion" {
       --kubeconfig /root/.kube/config
 
     export KUBECONFIG=/root/.kube/config
-
-    # Ghi vào bashrc để login sau vẫn dùng được
     echo 'export KUBECONFIG=/root/.kube/config' >> /root/.bashrc
 
     # Chờ nodes sẵn sàng
@@ -116,7 +114,7 @@ resource "aws_instance" "bastion" {
       --set replicas=${var.rancher_replicas} \
       --wait --timeout 10m
 
-    echo "Rancher URL: https://$${RANCHER_HOSTNAME}"
+    echo "Done — Rancher URL: https://$${RANCHER_HOSTNAME}"
   EOF
 
   tags = merge(local.common_tags, {
