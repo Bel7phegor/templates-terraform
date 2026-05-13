@@ -50,6 +50,9 @@ resource "aws_instance" "bastion" {
 
     # helm
     curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+    sudo systemctl restart amazon-ssm-agent
+    sudo systemctl status amazon-ssm-agent
   EOF
 
   tags = merge(local.common_tags, {
