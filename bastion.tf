@@ -46,28 +46,22 @@ resource "aws_instance" "bastion" {
 
   user_data = <<-USERDATA
     #!/bin/bash
-    exec > /var/log/userdata.log 2>&1
+  
+    apt update -y
+    apt install -y curl unzip wget snapd net-tools
 
-    # Ubuntu dùng apt
-    apt-get update -y
-    apt-get install -y curl unzip wget snapd
+    mkdir /tools && cd /tools
 
-    # Cài AWS CLI v2
-    curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
-    unzip -q /tmp/awscliv2.zip -d /tmp
-    /tmp/aws/install
-    rm -rf /tmp/awscliv2.zip /tmp/aws
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    unzip awscliv2.zip
+    sudo ./aws/install
+    aws --version
 
-    # Cài SSM Agent
-    snap install amazon-ssm-agent --classic
-    systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
-    systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
-
-    # kubectl
-    KUBECTL_VERSION=$(curl -Ls https://dl.k8s.io/release/stable.txt)
-    curl -fLo /usr/local/bin/kubectl \
-      "https://dl.k8s.io/release/$${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
-    chmod +x /usr/local/bin/kubectl
+    curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.29.3/2024-04-19/bin/linux/amd64/kubectl
+    chmod +x ./kubectl
+    sudo mv ./kubectl /usr/local/bin/kubectl
+    # Ki?m tra
+    kubectl version --client
 
     # helm
     curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
@@ -78,9 +72,11 @@ resource "aws_instance" "bastion" {
       --region ${data.aws_region.current.name} \
       --name ${aws_eks_cluster.main[0].name} \
       --kubeconfig /root/.kube/config
+
     echo 'export KUBECONFIG=/root/.kube/config' >> /root/.bashrc
     echo 'export KUBECONFIG=/root/.kube/config' >> /home/ubuntu/.bashrc
 
+    kubectl get node -A
     # Ghi script cài đặt ra file riêng
     cat > /usr/local/bin/install-tools.sh << 'SCRIPT'
 #!/bin/bash
