@@ -239,7 +239,7 @@ variable "bastion_instance_type" {
 variable "bastion_key_name" {
   description = "Key pair SSH cho bastion, để trống nếu dùng SSM"
   type        = string
-  default     = ""
+  default     = "key-pem"
 }
 
 # BASTION — EKS ACCESS
