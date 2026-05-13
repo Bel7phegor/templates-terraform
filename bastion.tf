@@ -46,8 +46,9 @@ resource "aws_instance" "bastion" {
 
   user_data = <<-USERDATA
 #!/bin/bash
-exec > /var/log/userdata.log 2>&1
+exec > >(tee /var/log/userdata.log|logger -t user-data -s 2>/dev/console) 2>&1
 
+set -x # Debug mode: In ra từng câu lệnh trước khi chạy
 apt-get update -y
 apt-get install -y curl unzip wget net-tools
 
@@ -78,11 +79,6 @@ aws eks update-kubeconfig \
 echo 'export KUBECONFIG=/root/.kube/config' >> /root/.bashrc
 echo 'export KUBECONFIG=/root/.kube/config' >> /home/ubuntu/.bashrc
 
-# SSM Agent
-snap install amazon-ssm-agent --classic
-systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
-systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
-
 # install-tools script
 cat > /usr/local/bin/install-tools.sh << 'SCRIPT'
 #!/bin/bash
@@ -107,7 +103,7 @@ helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --set controller.service.type=LoadBalancer \
   --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
   --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing \
-  --set "controller.service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-subnets"="$PUBLIC_SUBNET_1,$PUBLIC_SUBNET_2" \
+  --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-subnets"=$PUBLIC_SUBNET_1,$PUBLIC_SUBNET_2 \
   --wait --timeout 5m
 
 echo "[$(date)] Installing cert-manager..."
