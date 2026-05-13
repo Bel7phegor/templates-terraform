@@ -93,6 +93,7 @@ kubectl wait --for=condition=Ready nodes --all --timeout=600s
 echo "[$(date)] Installing ingress-nginx..."
 PUBLIC_SUBNET_1="${aws_subnet.public[0].id}"
 PUBLIC_SUBNET_2="${aws_subnet.public[1].id}"
+PUBLIC_SUBNETS="$PUBLIC_SUBNET_1\\,$PUBLIC_SUBNET_2"
 
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
@@ -103,7 +104,7 @@ helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --set controller.service.type=LoadBalancer \
   --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
   --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing \
-  --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-subnets"=$PUBLIC_SUBNET_1,$PUBLIC_SUBNET_2 \
+  --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-subnets"="$PUBLIC_SUBNETS" \
   --wait --timeout 5m
 
 echo "[$(date)] Installing cert-manager..."
