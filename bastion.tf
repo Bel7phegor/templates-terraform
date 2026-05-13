@@ -111,9 +111,33 @@ helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --set controller.service.type=LoadBalancer \
   --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
   --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing \
-  --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-subnets"="$PUBLIC_SUBNETS" \
+  --set-string controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-subnets"="$PUBLIC_SUBNETS" \
   --atomic --cleanup-on-fail \
   --wait --timeout 5m
+
+SCRIPT
+
+chmod +x /usr/local/bin/install-tools.sh
+
+cat > /etc/systemd/system/install-tools.service << 'SERVICE'
+[Unit]
+Description=Install EKS tools and Rancher
+After=network-online.target cloud-final.service
+Wants=network-online.target
+ConditionPathExists=!/var/log/install-tools.log
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/install-tools.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+systemctl daemon-reload
+systemctl enable install-tools.service
+systemctl start install-tools.service &
 
 echo "Userdata complete"
   USERDATA
