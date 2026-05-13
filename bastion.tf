@@ -45,40 +45,46 @@ resource "aws_instance" "bastion" {
   key_name               = var.bastion_key_name != "" ? var.bastion_key_name : null
 
   user_data = <<-USERDATA
-    #!/bin/bash
-  
-    apt update -y
-    apt install -y curl unzip wget snapd net-tools
+#!/bin/bash
+exec > /var/log/userdata.log 2>&1
 
-    mkdir /tools && cd /tools
+apt-get update -y
+apt-get install -y curl unzip wget net-tools
 
-    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-    unzip awscliv2.zip
-    sudo ./aws/install
-    aws --version
+# AWS CLI
+curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+unzip -q /tmp/awscliv2.zip -d /tmp
+/tmp/aws/install
+rm -rf /tmp/awscliv2.zip /tmp/aws
+aws --version
 
-    curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.29.3/2024-04-19/bin/linux/amd64/kubectl
-    chmod +x ./kubectl
-    sudo mv ./kubectl /usr/local/bin/kubectl
-    # Ki?m tra
-    kubectl version --client
+# kubectl
+curl -fLo /usr/local/bin/kubectl \
+  "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+chmod +x /usr/local/bin/kubectl
+kubectl version --client
 
-    # helm
-    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+# helm
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+helm version
 
-    # kubeconfig
-    mkdir -p /root/.kube
-    aws eks update-kubeconfig \
-      --region ${data.aws_region.current.name} \
-      --name ${aws_eks_cluster.main[0].name} \
-      --kubeconfig /root/.kube/config
+# kubeconfig
+mkdir -p /root/.kube
+aws eks update-kubeconfig \
+  --region ${data.aws_region.current.name} \
+  --name ${aws_eks_cluster.main[0].name} \
+  --kubeconfig /root/.kube/config
 
-    echo 'export KUBECONFIG=/root/.kube/config' >> /root/.bashrc
-    echo 'export KUBECONFIG=/root/.kube/config' >> /home/ubuntu/.bashrc
+echo 'export KUBECONFIG=/root/.kube/config' >> /root/.bashrc
+echo 'export KUBECONFIG=/root/.kube/config' >> /home/ubuntu/.bashrc
 
-    kubectl get node -A
-    # Ghi script cài đặt ra file riêng
-    cat > /usr/local/bin/install-tools.sh << 'SCRIPT'
+# SSM Agent
+snap install amazon-ssm-agent --classic
+systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
+systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
+
+# install-tools script
+cat > /usr/local/bin/install-tools.sh << 'SCRIPT'
 #!/bin/bash
 set -e
 exec >> /var/log/install-tools.log 2>&1
@@ -151,9 +157,9 @@ helm upgrade --install rancher rancher-stable/rancher \
 echo "[$(date)] Done: https://$RANCHER_HOSTNAME"
 SCRIPT
 
-    chmod +x /usr/local/bin/install-tools.sh
+chmod +x /usr/local/bin/install-tools.sh
 
-    cat > /etc/systemd/system/install-tools.service << 'SERVICE'
+cat > /etc/systemd/system/install-tools.service << 'SERVICE'
 [Unit]
 Description=Install EKS tools and Rancher
 After=network-online.target cloud-final.service
@@ -169,11 +175,11 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 SERVICE
 
-    systemctl daemon-reload
-    systemctl enable install-tools.service
-    systemctl start install-tools.service &
+systemctl daemon-reload
+systemctl enable install-tools.service
+systemctl start install-tools.service &
 
-    echo "Userdata complete"
+echo "Userdata complete"
   USERDATA
 
   tags = merge(local.common_tags, {
