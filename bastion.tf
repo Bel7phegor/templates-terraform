@@ -40,14 +40,18 @@ resource "aws_instance" "bastion" {
 
   user_data = <<-EOF
     #!/bin/bash
+    exec > /var/log/userdata.log 2>&1
+
     yum update -y
-    curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.29.3/2024-04-19/bin/linux/amd64/kubectl
+
+    # kubectl
+    KUBECTL_VERSION=$(curl -Ls https://dl.k8s.io/release/stable.txt)
+    curl -fLo /usr/local/bin/kubectl \
+      "https://dl.k8s.io/release/$${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
     chmod +x /usr/local/bin/kubectl
-    kubectl version --client
 
     # helm
-    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-    helm version
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
     # kubeconfig
     mkdir -p /root/.kube
@@ -55,19 +59,25 @@ resource "aws_instance" "bastion" {
       --region ${data.aws_region.current.name} \
       --name ${aws_eks_cluster.main[0].name} \
       --kubeconfig /root/.kube/config
-
-    export KUBECONFIG=/root/.kube/config
     echo 'export KUBECONFIG=/root/.kube/config' >> /root/.bashrc
 
-    # Chờ nodes sẵn sàng
-    kubectl wait --for=condition=Ready nodes --all --timeout=300s
+    # Ghi script cài đặt ra file riêng
+    cat > /usr/local/bin/install-tools.sh << 'SCRIPT'
+    #!/bin/bash
+    set -e
+    exec > /var/log/install-tools.log 2>&1
 
-    # ingress-nginx
-    helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-    helm repo update
+    export KUBECONFIG=/root/.kube/config
 
+    echo "[$(date)] Waiting for nodes..."
+    kubectl wait --for=condition=Ready nodes --all --timeout=600s
+
+    echo "[$(date)] Installing ingress-nginx..."
     PUBLIC_SUBNET_1="${aws_subnet.public[0].id}"
     PUBLIC_SUBNET_2="${aws_subnet.public[1].id}"
+
+    helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+    helm repo update
 
     helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
       --namespace ingress-nginx \
@@ -75,10 +85,10 @@ resource "aws_instance" "bastion" {
       --set controller.service.type=LoadBalancer \
       --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
       --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing \
-      --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-subnets"="$${PUBLIC_SUBNET_1}\,$${PUBLIC_SUBNET_2}" \
+      --set "controller.service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-subnets"="$$PUBLIC_SUBNET_1,$$PUBLIC_SUBNET_2" \
       --wait --timeout 5m
 
-    # cert-manager
+    echo "[$(date)] Installing cert-manager..."
     helm repo add jetstack https://charts.jetstack.io
     helm repo update
 
@@ -88,25 +98,69 @@ resource "aws_instance" "bastion" {
       --set crds.enabled=true \
       --wait --timeout 5m
 
+    echo "[$(date)] Waiting for cert-manager webhook..."
     sleep 30
 
-    RANCHER_HOSTNAME=$(kubectl get svc ingress-nginx-controller \
-      -n ingress-nginx \
-      -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+    echo "[$(date)] Getting NLB hostname..."
+    RANCHER_HOSTNAME=""
+    for i in $(seq 1 20); do
+      RANCHER_HOSTNAME=$(kubectl get svc ingress-nginx-controller \
+        -n ingress-nginx \
+        -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+      if [ -n "$$RANCHER_HOSTNAME" ]; then
+        echo "[$(date)] Got hostname: $$RANCHER_HOSTNAME"
+        break
+      fi
+      echo "[$(date)] Waiting for NLB hostname... attempt $$i"
+      sleep 15
+    done
 
+    if [ -z "$$RANCHER_HOSTNAME" ]; then
+      echo "[$(date)] ERROR: Could not get NLB hostname after 5 minutes"
+      exit 1
+    fi
+
+    echo "[$(date)] Installing Rancher..."
     helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
     helm repo update
 
     helm upgrade --install rancher rancher-stable/rancher \
       --namespace cattle-system \
       --create-namespace \
-      --set hostname=$${RANCHER_HOSTNAME} \
+      --set hostname=$$RANCHER_HOSTNAME \
       --set bootstrapPassword=${var.rancher_bootstrap_password} \
       --set ingress.tls.source=secret \
       --set replicas=${var.rancher_replicas} \
       --wait --timeout 10m
 
-    echo "Done — Rancher URL: https://$${RANCHER_HOSTNAME}"
+    echo "[$(date)] Done! Rancher URL: https://$$RANCHER_HOSTNAME"
+    SCRIPT
+
+    chmod +x /usr/local/bin/install-tools.sh
+
+    # Tạo systemd service chạy sau khi network up
+    cat > /etc/systemd/system/install-tools.service << 'SERVICE'
+    [Unit]
+    Description=Install EKS tools and Rancher
+    After=network-online.target cloud-final.service
+    Wants=network-online.target
+    ConditionPathExists=!/var/log/install-tools.log
+
+    [Service]
+    Type=oneshot
+    ExecStart=/usr/local/bin/install-tools.sh
+    RemainAfterExit=yes
+    StandardOutput=journal
+
+    [Install]
+    WantedBy=multi-user.target
+    SERVICE
+
+    systemctl daemon-reload
+    systemctl enable install-tools.service
+    systemctl start install-tools.service &
+
+    echo "Setup complete. Check /var/log/install-tools.log for progress"
   EOF
 
   tags = merge(local.common_tags, {
