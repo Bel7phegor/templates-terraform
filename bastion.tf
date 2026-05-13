@@ -1,15 +1,21 @@
-data "aws_ami" "amazon_linux_2023" {
+# Ubuntu 22.04 LTS AMI
+data "aws_ami" "ubuntu" {
   most_recent = true
-  owners      = ["amazon"]
+  owners      = ["099720109477"] # Canonical
 
   filter {
     name   = "name"
-    values = ["al2023-ami-*-x86_64"]
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
   }
 
   filter {
     name   = "virtualization-type"
     values = ["hvm"]
+  }
+
+  filter {
+    name   = "state"
+    values = ["available"]
   }
 }
 
@@ -31,7 +37,7 @@ resource "aws_iam_instance_profile" "bastion" {
 
 resource "aws_instance" "bastion" {
   count                  = local.should_create_bastion ? 1 : 0
-  ami                    = data.aws_ami.amazon_linux_2023.id
+  ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.bastion_instance_type
   subnet_id              = aws_subnet.private[0].id
   vpc_security_group_ids = [aws_security_group.bastion[0].id]
@@ -42,7 +48,20 @@ resource "aws_instance" "bastion" {
     #!/bin/bash
     exec > /var/log/userdata.log 2>&1
 
-    yum update -y
+    # Ubuntu dùng apt
+    apt-get update -y
+    apt-get install -y curl unzip wget snapd
+
+    # Cài AWS CLI v2
+    curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+    unzip -q /tmp/awscliv2.zip -d /tmp
+    /tmp/aws/install
+    rm -rf /tmp/awscliv2.zip /tmp/aws
+
+    # Cài SSM Agent
+    snap install amazon-ssm-agent --classic
+    systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
+    systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
 
     # kubectl
     KUBECTL_VERSION=$(curl -Ls https://dl.k8s.io/release/stable.txt)
@@ -60,12 +79,13 @@ resource "aws_instance" "bastion" {
       --name ${aws_eks_cluster.main[0].name} \
       --kubeconfig /root/.kube/config
     echo 'export KUBECONFIG=/root/.kube/config' >> /root/.bashrc
+    echo 'export KUBECONFIG=/root/.kube/config' >> /home/ubuntu/.bashrc
 
-    # Ghi script cài đặt ra file riêng — dùng 'SCRIPT' để tránh conflict với USERDATA
+    # Ghi script cài đặt ra file riêng
     cat > /usr/local/bin/install-tools.sh << 'SCRIPT'
 #!/bin/bash
 set -e
-exec > /var/log/install-tools.log 2>&1
+exec >> /var/log/install-tools.log 2>&1
 
 export KUBECONFIG=/root/.kube/config
 
@@ -114,6 +134,11 @@ for i in $(seq 1 20); do
   sleep 15
 done
 
+if [ -z "$RANCHER_HOSTNAME" ]; then
+  echo "[$(date)] ERROR: Could not get NLB hostname"
+  exit 1
+fi
+
 echo "[$(date)] Installing Rancher..."
 helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
 helm repo update
@@ -132,7 +157,6 @@ SCRIPT
 
     chmod +x /usr/local/bin/install-tools.sh
 
-    # Systemd service chạy sau boot
     cat > /etc/systemd/system/install-tools.service << 'SERVICE'
 [Unit]
 Description=Install EKS tools and Rancher
@@ -154,13 +178,12 @@ SERVICE
     systemctl start install-tools.service &
 
     echo "Userdata complete"
-    sudo systemctl restart amazon-ssm-agent
-    sudo systemctl status amazon-ssm-agent
   USERDATA
 
   tags = merge(local.common_tags, {
     Name         = "${var.project}-bastion"
     Component    = "bastion"
+    OS           = "ubuntu-22.04"
     InstanceType = var.bastion_instance_type
   })
 

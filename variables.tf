@@ -237,7 +237,7 @@ variable "bastion_instance_type" {
 }
 
 variable "bastion_key_name" {
-  description = "Key pair SSH cho bastion, để trống nếu dùng SSM"
+  description = "Key pair SSH cho bastion. Ubuntu dùng user 'ubuntu' thay vì 'ec2-user'"
   type        = string
   default     = "key-pem"
 }
