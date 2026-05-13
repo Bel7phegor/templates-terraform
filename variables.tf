@@ -215,7 +215,7 @@ variable "enable_node_remote_access" {
 variable "nodegroup_ssh_key_name" {
   description = "EC2 Key Pair để SSH vào nodes"
   type        = string
-  default     = ""
+  default     = "key-pem"
 }
 
 variable "nodegroup_remote_access_sg_ids" {
