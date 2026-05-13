@@ -38,8 +38,10 @@ resource "aws_instance" "bastion" {
   iam_instance_profile   = aws_iam_instance_profile.bastion[0].name
   key_name               = var.bastion_key_name != "" ? var.bastion_key_name : null
 
-  user_data = <<-EOF
+  user_data = <<-USERDATA
     #!/bin/bash
+    exec > /var/log/userdata.log 2>&1
+
     yum update -y
 
     # kubectl
@@ -51,9 +53,110 @@ resource "aws_instance" "bastion" {
     # helm
     curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
+    # kubeconfig
+    mkdir -p /root/.kube
+    aws eks update-kubeconfig \
+      --region ${data.aws_region.current.name} \
+      --name ${aws_eks_cluster.main[0].name} \
+      --kubeconfig /root/.kube/config
+    echo 'export KUBECONFIG=/root/.kube/config' >> /root/.bashrc
+
+    # Ghi script cài đặt ra file riêng — dùng 'SCRIPT' để tránh conflict với USERDATA
+    cat > /usr/local/bin/install-tools.sh << 'SCRIPT'
+#!/bin/bash
+set -e
+exec > /var/log/install-tools.log 2>&1
+
+export KUBECONFIG=/root/.kube/config
+
+echo "[$(date)] Waiting for nodes..."
+kubectl wait --for=condition=Ready nodes --all --timeout=600s
+
+echo "[$(date)] Installing ingress-nginx..."
+PUBLIC_SUBNET_1="${aws_subnet.public[0].id}"
+PUBLIC_SUBNET_2="${aws_subnet.public[1].id}"
+
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx \
+  --create-namespace \
+  --set controller.service.type=LoadBalancer \
+  --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
+  --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing \
+  --set "controller.service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-subnets"="$PUBLIC_SUBNET_1,$PUBLIC_SUBNET_2" \
+  --wait --timeout 5m
+
+echo "[$(date)] Installing cert-manager..."
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+
+helm upgrade --install cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --set crds.enabled=true \
+  --wait --timeout 5m
+
+sleep 30
+
+echo "[$(date)] Getting NLB hostname..."
+RANCHER_HOSTNAME=""
+for i in $(seq 1 20); do
+  RANCHER_HOSTNAME=$(kubectl get svc ingress-nginx-controller \
+    -n ingress-nginx \
+    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+  if [ -n "$RANCHER_HOSTNAME" ]; then
+    echo "[$(date)] Got hostname: $RANCHER_HOSTNAME"
+    break
+  fi
+  echo "[$(date)] Waiting for NLB... attempt $i"
+  sleep 15
+done
+
+echo "[$(date)] Installing Rancher..."
+helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
+helm repo update
+
+helm upgrade --install rancher rancher-stable/rancher \
+  --namespace cattle-system \
+  --create-namespace \
+  --set hostname=$RANCHER_HOSTNAME \
+  --set bootstrapPassword=${var.rancher_bootstrap_password} \
+  --set ingress.tls.source=secret \
+  --set replicas=${var.rancher_replicas} \
+  --wait --timeout 10m
+
+echo "[$(date)] Done: https://$RANCHER_HOSTNAME"
+SCRIPT
+
+    chmod +x /usr/local/bin/install-tools.sh
+
+    # Systemd service chạy sau boot
+    cat > /etc/systemd/system/install-tools.service << 'SERVICE'
+[Unit]
+Description=Install EKS tools and Rancher
+After=network-online.target cloud-final.service
+Wants=network-online.target
+ConditionPathExists=!/var/log/install-tools.log
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/install-tools.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+    systemctl daemon-reload
+    systemctl enable install-tools.service
+    systemctl start install-tools.service &
+
+    echo "Userdata complete"
     sudo systemctl restart amazon-ssm-agent
     sudo systemctl status amazon-ssm-agent
-  EOF
+  USERDATA
 
   tags = merge(local.common_tags, {
     Name         = "${var.project}-bastion"
