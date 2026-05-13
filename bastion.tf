@@ -98,13 +98,21 @@ PUBLIC_SUBNETS="$PUBLIC_SUBNET_1\\,$PUBLIC_SUBNET_2"
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
 
+STATUS=$(helm status ingress-nginx -n ingress-nginx 2>&1 || echo "Not Found")
+if echo "$STATUS" | grep -q "pending-"; then
+  echo "[$(date)] Detected pending state, deleting stuck release..."
+  helm uninstall ingress-nginx -n ingress-nginx --wait || true
+  sleep 10
+fi
+
 helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx \
   --create-namespace \
   --set controller.service.type=LoadBalancer \
-  --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
-  --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing \
-  --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-subnets"="$PUBLIC_SUBNETS" \
+  --set-string controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
+  --set-string controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing \
+  --set-string controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-subnets"="$PUBLIC_SUBNETS" \
+  --atomic --cleanup-on-fail \
   --wait --timeout 5m
 
 echo "[$(date)] Installing cert-manager..."
