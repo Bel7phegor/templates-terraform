@@ -156,6 +156,7 @@ helm upgrade --install rancher rancher-stable/rancher \
   --set hostname=$RANCHER_HOSTNAME \
   --set bootstrapPassword=${var.rancher_bootstrap_password} \
   --set ingress.tls.source=secret \
+  --set ingress.ingressClassName=nginx \
   --set replicas=${var.rancher_replicas} \
   --wait --timeout 10m
 
