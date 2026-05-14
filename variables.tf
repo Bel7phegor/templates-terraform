@@ -252,7 +252,7 @@ variable "bastion_eks_access_policy_arn" {
 variable "bastion_key_path" {
   description = "Đường dẫn tới file .pem để SSH vào bastion khi destroy"
   type        = string
-  default     = "key-pem.pem"
+  default     = "key-pem"
 }
 
 # RANCHER
