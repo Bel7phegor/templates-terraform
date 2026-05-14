@@ -168,26 +168,6 @@ systemctl start install-tools.service &
 echo "Userdata complete"
   USERDATA
 
-  # Chạy cleanup trước khi destroy instance
-  provisioner "remote-exec" {
-    when = destroy
-
-    inline = [
-      "export KUBECONFIG=/root/.kube/config",
-      "bash /usr/local/bin/cleanup.sh || true"
-    ]
-
-    connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = file("${path.module}/${var.bastion_key_name}.pem")
-      host        = self.private_ip
-
-      bastion_host        = null
-      timeout             = "5m"
-    }
-  }
-
   tags = merge(local.common_tags, {
     Name         = "${var.project}-bastion"
     Component    = "bastion"
