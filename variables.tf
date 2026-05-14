@@ -151,7 +151,7 @@ variable "nodegroup_instance_types" {
 
 variable "nodegroup_desired_size" {
   type    = number
-  default = 1
+  default = 3
 }
 
 variable "nodegroup_min_size" {
@@ -161,7 +161,7 @@ variable "nodegroup_min_size" {
 
 variable "nodegroup_max_size" {
   type    = number
-  default = 1
+  default = 4
 }
 
 variable "nodegroup_disk_size" {
