@@ -249,6 +249,12 @@ variable "bastion_eks_access_policy_arn" {
   default     = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
 }
 
+variable "bastion_key_path" {
+  description = "Đường dẫn tới file .pem để SSH vào bastion khi destroy"
+  type        = string
+  default     = "key-pem.pem"
+}
+
 # RANCHER
 variable "rancher_bootstrap_password" {
   description = "Mật khẩu đăng nhập Rancher lần đầu"

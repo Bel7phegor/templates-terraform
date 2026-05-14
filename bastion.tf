@@ -1,40 +1,3 @@
-# Ubuntu 22.04 LTS AMI
-data "aws_ami" "ubuntu" {
-  most_recent = true
-  owners      = ["099720109477"] # Canonical
-
-  filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-
-  filter {
-    name   = "state"
-    values = ["available"]
-  }
-}
-
-data "aws_iam_role" "bastion" {
-  count = local.should_create_bastion ? 1 : 0
-  name  = var.bastion_instance_role_name
-}
-
-resource "aws_iam_instance_profile" "bastion" {
-  count = local.should_create_bastion ? 1 : 0
-  name  = "${var.project}-bastion-instance-profile"
-  role  = data.aws_iam_role.bastion[0].name
-
-  tags = merge(local.common_tags, {
-    Name      = "${var.project}-bastion-instance-profile"
-    Component = "bastion"
-  })
-}
-
 resource "aws_instance" "bastion" {
   count                  = local.should_create_bastion ? 1 : 0
   ami                    = data.aws_ami.ubuntu.id
@@ -48,7 +11,6 @@ resource "aws_instance" "bastion" {
 #!/bin/bash
 exec > >(tee /var/log/userdata.log|logger -t user-data -s 2>/dev/console) 2>&1
 
-set -x # Debug mode: In ra từng câu lệnh trước khi chạy
 apt-get update -y
 apt-get install -y curl unzip wget net-tools
 
@@ -57,17 +19,14 @@ curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/aw
 unzip -q /tmp/awscliv2.zip -d /tmp
 /tmp/aws/install
 rm -rf /tmp/awscliv2.zip /tmp/aws
-aws --version
 
 # kubectl
 curl -fLo /usr/local/bin/kubectl \
   "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
 chmod +x /usr/local/bin/kubectl
-kubectl version --client
 
 # helm
 curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-helm version
 
 # kubeconfig
 mkdir -p /root/.kube
@@ -79,7 +38,6 @@ aws eks update-kubeconfig \
 echo 'export KUBECONFIG=/root/.kube/config' >> /root/.bashrc
 echo 'export KUBECONFIG=/root/.kube/config' >> /home/ubuntu/.bashrc
 
-# install-tools script
 cat > /usr/local/bin/install-tools.sh << 'SCRIPT'
 #!/bin/bash
 set -e
@@ -98,26 +56,94 @@ PUBLIC_SUBNETS="$PUBLIC_SUBNET_1\\,$PUBLIC_SUBNET_2"
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
 
-STATUS=$(helm status ingress-nginx -n ingress-nginx 2>&1 || echo "Not Found")
-if echo "$STATUS" | grep -q "pending-"; then
-  echo "[$(date)] Detected pending state, deleting stuck release..."
-  helm uninstall ingress-nginx -n ingress-nginx --wait || true
-  sleep 10
-fi
-
 helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx \
   --create-namespace \
   --set controller.service.type=LoadBalancer \
   --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
   --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing \
-  --set-string controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-subnets"="$PUBLIC_SUBNETS" \
+  --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-subnets"="$PUBLIC_SUBNETS" \
   --atomic --cleanup-on-fail \
   --wait --timeout 5m
 
+echo "[$(date)] Installing cert-manager..."
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+
+helm upgrade --install cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --set crds.enabled=true \
+  --wait --timeout 5m
+
+sleep 30
+
+echo "[$(date)] Getting NLB hostname..."
+RANCHER_HOSTNAME=""
+for i in $(seq 1 20); do
+  RANCHER_HOSTNAME=$(kubectl get svc ingress-nginx-controller \
+    -n ingress-nginx \
+    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+  if [ -n "$RANCHER_HOSTNAME" ]; then
+    echo "[$(date)] Got hostname: $RANCHER_HOSTNAME"
+    break
+  fi
+  echo "[$(date)] Waiting for NLB... attempt $i"
+  sleep 15
+done
+
+if [ -z "$RANCHER_HOSTNAME" ]; then
+  echo "[$(date)] ERROR: Could not get NLB hostname"
+  exit 1
+fi
+
+echo "[$(date)] Installing Rancher..."
+helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
+helm repo update
+
+helm upgrade --install rancher rancher-stable/rancher \
+  --namespace cattle-system \
+  --create-namespace \
+  --set hostname=$RANCHER_HOSTNAME \
+  --set bootstrapPassword=${var.rancher_bootstrap_password} \
+  --set ingress.tls.source=secret \
+  --set ingress.ingressClassName=nginx \
+  --set replicas=${var.rancher_replicas} \
+  --wait --timeout 10m
+
+echo "[$(date)] Done: https://$RANCHER_HOSTNAME"
 SCRIPT
 
 chmod +x /usr/local/bin/install-tools.sh
+
+# Script cleanup — chạy khi destroy
+cat > /usr/local/bin/cleanup.sh << 'CLEANUP'
+#!/bin/bash
+exec > /var/log/cleanup.log 2>&1
+export KUBECONFIG=/root/.kube/config
+
+echo "[$(date)] Starting cleanup..."
+
+# Xóa rancher trước
+helm uninstall rancher -n cattle-system --wait --timeout 3m || true
+kubectl delete namespace cattle-system --timeout=60s || true
+
+# Xóa cert-manager
+helm uninstall cert-manager -n cert-manager --wait --timeout 3m || true
+kubectl delete namespace cert-manager --timeout=60s || true
+
+# Xóa ingress-nginx — NLB sẽ bị xóa theo
+helm uninstall ingress-nginx -n ingress-nginx --wait --timeout 3m || true
+kubectl delete namespace ingress-nginx --timeout=60s || true
+
+# Chờ NLB xóa hoàn toàn
+echo "[$(date)] Waiting for NLB to be deleted..."
+sleep 60
+
+echo "[$(date)] Cleanup complete"
+CLEANUP
+
+chmod +x /usr/local/bin/cleanup.sh
 
 cat > /etc/systemd/system/install-tools.service << 'SERVICE'
 [Unit]
@@ -141,6 +167,26 @@ systemctl start install-tools.service &
 
 echo "Userdata complete"
   USERDATA
+
+  # Chạy cleanup trước khi destroy instance
+  provisioner "remote-exec" {
+    when = destroy
+
+    inline = [
+      "export KUBECONFIG=/root/.kube/config",
+      "bash /usr/local/bin/cleanup.sh || true"
+    ]
+
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file("${path.module}/${var.bastion_key_name}.pem")
+      host        = self.private_ip
+
+      bastion_host        = null
+      timeout             = "5m"
+    }
+  }
 
   tags = merge(local.common_tags, {
     Name         = "${var.project}-bastion"
