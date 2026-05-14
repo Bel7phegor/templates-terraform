@@ -1,3 +1,39 @@
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"]
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+
+  filter {
+    name   = "state"
+    values = ["available"]
+  }
+}
+
+data "aws_iam_role" "bastion" {
+  count = local.should_create_bastion ? 1 : 0
+  name  = var.bastion_instance_role_name
+}
+
+resource "aws_iam_instance_profile" "bastion" {
+  count = local.should_create_bastion ? 1 : 0
+  name  = "${var.project}-bastion-instance-profile"
+  role  = data.aws_iam_role.bastion[0].name
+
+  tags = merge(local.common_tags, {
+    Name      = "${var.project}-bastion-instance-profile"
+    Component = "bastion"
+  })
+}
+
 resource "aws_instance" "bastion" {
   count                  = local.should_create_bastion ? 1 : 0
   ami                    = data.aws_ami.ubuntu.id
@@ -115,35 +151,6 @@ echo "[$(date)] Done: https://$RANCHER_HOSTNAME"
 SCRIPT
 
 chmod +x /usr/local/bin/install-tools.sh
-
-# Script cleanup — chạy khi destroy
-cat > /usr/local/bin/cleanup.sh << 'CLEANUP'
-#!/bin/bash
-exec > /var/log/cleanup.log 2>&1
-export KUBECONFIG=/root/.kube/config
-
-echo "[$(date)] Starting cleanup..."
-
-# Xóa rancher trước
-helm uninstall rancher -n cattle-system --wait --timeout 3m || true
-kubectl delete namespace cattle-system --timeout=60s || true
-
-# Xóa cert-manager
-helm uninstall cert-manager -n cert-manager --wait --timeout 3m || true
-kubectl delete namespace cert-manager --timeout=60s || true
-
-# Xóa ingress-nginx — NLB sẽ bị xóa theo
-helm uninstall ingress-nginx -n ingress-nginx --wait --timeout 3m || true
-kubectl delete namespace ingress-nginx --timeout=60s || true
-
-# Chờ NLB xóa hoàn toàn
-echo "[$(date)] Waiting for NLB to be deleted..."
-sleep 60
-
-echo "[$(date)] Cleanup complete"
-CLEANUP
-
-chmod +x /usr/local/bin/cleanup.sh
 
 cat > /etc/systemd/system/install-tools.service << 'SERVICE'
 [Unit]
