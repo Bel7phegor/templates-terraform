@@ -1,6 +1,7 @@
+# Ubuntu 22.04 LTS AMI
 data "aws_ami" "ubuntu" {
   most_recent = true
-  owners      = ["099720109477"]
+  owners      = ["099720109477"] # Canonical
 
   filter {
     name   = "name"
@@ -47,6 +48,7 @@ resource "aws_instance" "bastion" {
 #!/bin/bash
 exec > >(tee /var/log/userdata.log|logger -t user-data -s 2>/dev/console) 2>&1
 
+set -x # Debug mode: In ra từng câu lệnh trước khi chạy
 apt-get update -y
 apt-get install -y curl unzip wget net-tools
 
@@ -55,14 +57,17 @@ curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/aw
 unzip -q /tmp/awscliv2.zip -d /tmp
 /tmp/aws/install
 rm -rf /tmp/awscliv2.zip /tmp/aws
+aws --version
 
 # kubectl
 curl -fLo /usr/local/bin/kubectl \
   "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
 chmod +x /usr/local/bin/kubectl
+kubectl version --client
 
 # helm
 curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+helm version
 
 # kubeconfig
 mkdir -p /root/.kube
@@ -74,6 +79,7 @@ aws eks update-kubeconfig \
 echo 'export KUBECONFIG=/root/.kube/config' >> /root/.bashrc
 echo 'export KUBECONFIG=/root/.kube/config' >> /home/ubuntu/.bashrc
 
+# install-tools script
 cat > /usr/local/bin/install-tools.sh << 'SCRIPT'
 #!/bin/bash
 set -e
@@ -91,6 +97,13 @@ PUBLIC_SUBNETS="$PUBLIC_SUBNET_1\\,$PUBLIC_SUBNET_2"
 
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
+
+STATUS=$(helm status ingress-nginx -n ingress-nginx 2>&1 || echo "Not Found")
+if echo "$STATUS" | grep -q "pending-"; then
+  echo "[$(date)] Detected pending state, deleting stuck release..."
+  helm uninstall ingress-nginx -n ingress-nginx --wait || true
+  sleep 10
+fi
 
 helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx \
