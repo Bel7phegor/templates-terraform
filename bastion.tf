@@ -143,17 +143,23 @@ NLB_HOSTNAME=$(kubectl get svc ingress-nginx-controller \
   -n ingress-nginx \
   -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 
-helm upgrade rancher rancher-stable/rancher \
+helm upgrade --install rancher rancher-stable/rancher \
   --namespace cattle-system \
-  --set hostname=rancher.anphuc.site \
-  --set bootstrapPassword=Admin@123456 \
+  --create-namespace \
+  --set hostname=${var.rancher_hostname} \
+  --set bootstrapPassword=${var.rancher_bootstrap_password} \
   --set ingress.tls.source=external \
   --set ingress.ingressClassName=nginx \
-  --set ingress.extraAnnotations."nginx\.ingress\.kubernetes\.io/ssl-redirect"=false \
-  --set ingress.extraAnnotations."nginx\.ingress\.kubernetes\.io/force-ssl-redirect"=false \
-  --set replicas=1 \
+  --set replicas=${var.rancher_replicas} \
   --wait --timeout 10m
-  
+
+# Patch annotation dạng string để tránh lỗi bool
+kubectl annotate ingress rancher \
+  -n cattle-system \
+  "nginx.ingress.kubernetes.io/ssl-redirect=false" \
+  "nginx.ingress.kubernetes.io/force-ssl-redirect=false" \
+  --overwrite
+
 echo "[$(date)] Rancher installed successfully!"
 echo "[$(date)] Add DNS record:"
 echo "[$(date)]   ${var.rancher_hostname} CNAME $NLB_HOSTNAME"
