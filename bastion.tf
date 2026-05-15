@@ -87,9 +87,6 @@ exec >> /var/log/install-tools.log 2>&1
 
 export KUBECONFIG=/root/.kube/config
 
-echo "[$(date)] Waiting for nodes..."
-kubectl wait --for=condition=Ready nodes --all --timeout=600s
-
 echo "[$(date)] Installing ingress-nginx with ACM certificate..."
 PUBLIC_SUBNET_1="${aws_subnet.public[0].id}"
 PUBLIC_SUBNET_2="${aws_subnet.public[1].id}"
@@ -99,9 +96,8 @@ ACM_CERT_ARN="${var.acm_certificate_arn}"
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
 
-helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+helm upgrade ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx \
-  --create-namespace \
   --set controller.service.type=LoadBalancer \
   --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
   --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing \
@@ -110,9 +106,11 @@ helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-ssl-ports"=https \
   --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-backend-protocol"=http \
   --set controller.service.targetPorts.https=http \
-  --set controller.config.use-forwarded-headers=true \
+  --set controller.config.use-forwarded-headers="true" \
   --set controller.config.proxy-real-ip-cidr="0.0.0.0/0" \
-  --wait --timeout 10m
+  --set controller.config.ssl-redirect="false" \
+  --set controller.config.force-ssl-redirect="false" \
+  --wait --timeout 5m
 
 echo "[$(date)] ingress-nginx installed."
 kubectl get svc -n ingress-nginx
@@ -141,16 +139,21 @@ echo "[$(date)] Installing Rancher..."
 helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
 helm repo update
 
-helm upgrade --install rancher rancher-stable/rancher \
+NLB_HOSTNAME=$(kubectl get svc ingress-nginx-controller \
+  -n ingress-nginx \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+
+helm upgrade rancher rancher-stable/rancher \
   --namespace cattle-system \
-  --create-namespace \
-  --set hostname=${var.rancher_hostname} \
-  --set bootstrapPassword=${var.rancher_bootstrap_password} \
+  --set hostname=rancher.anphuc.site \
+  --set bootstrapPassword=Admin@123456 \
   --set ingress.tls.source=external \
   --set ingress.ingressClassName=nginx \
-  --set replicas=${var.rancher_replicas} \
+  --set ingress.extraAnnotations."nginx\.ingress\.kubernetes\.io/ssl-redirect"=false \
+  --set ingress.extraAnnotations."nginx\.ingress\.kubernetes\.io/force-ssl-redirect"=false \
+  --set replicas=1 \
   --wait --timeout 10m
-
+  
 echo "[$(date)] Rancher installed successfully!"
 echo "[$(date)] Add DNS record:"
 echo "[$(date)]   ${var.rancher_hostname} CNAME $NLB_HOSTNAME"
