@@ -90,20 +90,14 @@ export KUBECONFIG=/root/.kube/config
 echo "[$(date)] Waiting for nodes..."
 kubectl wait --for=condition=Ready nodes --all --timeout=600s
 
-echo "[$(date)] Installing ingress-nginx..."
+echo "[$(date)] Installing ingress-nginx with ACM certificate..."
 PUBLIC_SUBNET_1="${aws_subnet.public[0].id}"
 PUBLIC_SUBNET_2="${aws_subnet.public[1].id}"
 PUBLIC_SUBNETS="$PUBLIC_SUBNET_1\\,$PUBLIC_SUBNET_2"
+ACM_CERT_ARN="${var.acm_certificate_arn}"
 
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
-
-STATUS=$(helm status ingress-nginx -n ingress-nginx 2>&1 || echo "Not Found")
-if echo "$STATUS" | grep -q "pending-"; then
-  echo "[$(date)] Detected pending state, deleting stuck release..."
-  helm uninstall ingress-nginx -n ingress-nginx --wait || true
-  sleep 10
-fi
 
 helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx \
@@ -112,37 +106,34 @@ helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
   --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing \
   --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-subnets"="$PUBLIC_SUBNETS" \
-  --atomic --cleanup-on-fail \
-  --wait --timeout 5m
+  --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-ssl-cert"="$ACM_CERT_ARN" \
+  --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-ssl-ports"=https \
+  --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-backend-protocol"=http \
+  --set controller.service.targetPorts.https=http \
+  --set controller.config.use-forwarded-headers=true \
+  --set controller.config.proxy-real-ip-cidr="0.0.0.0/0" \
+  --wait --timeout 10m
 
-echo "[$(date)] Installing cert-manager..."
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
-
-helm upgrade --install cert-manager jetstack/cert-manager \
-  --namespace cert-manager \
-  --create-namespace \
-  --set crds.enabled=true \
-  --wait --timeout 5m
-
-sleep 30
+echo "[$(date)] ingress-nginx installed."
+kubectl get svc -n ingress-nginx
 
 echo "[$(date)] Getting NLB hostname..."
-RANCHER_HOSTNAME=""
-for i in $(seq 1 20); do
-  RANCHER_HOSTNAME=$(kubectl get svc ingress-nginx-controller \
+NLB_HOSTNAME=""
+for i in $(seq 1 30); do
+  NLB_HOSTNAME=$(kubectl get svc ingress-nginx-controller \
     -n ingress-nginx \
     -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
-  if [ -n "$RANCHER_HOSTNAME" ]; then
-    echo "[$(date)] Got hostname: $RANCHER_HOSTNAME"
+  if [ -n "$NLB_HOSTNAME" ]; then
+    echo "[$(date)] NLB hostname: $NLB_HOSTNAME"
     break
   fi
-  echo "[$(date)] Waiting for NLB... attempt $i"
+  echo "[$(date)] Waiting for NLB... attempt $i/30"
   sleep 15
 done
 
-if [ -z "$RANCHER_HOSTNAME" ]; then
-  echo "[$(date)] ERROR: Could not get NLB hostname"
+if [ -z "$NLB_HOSTNAME" ]; then
+  echo "[$(date)] ERROR: NLB hostname not available"
+  kubectl describe svc ingress-nginx-controller -n ingress-nginx
   exit 1
 fi
 
@@ -153,14 +144,17 @@ helm repo update
 helm upgrade --install rancher rancher-stable/rancher \
   --namespace cattle-system \
   --create-namespace \
-  --set hostname=$RANCHER_HOSTNAME \
+  --set hostname=${var.rancher_hostname} \
   --set bootstrapPassword=${var.rancher_bootstrap_password} \
-  --set ingress.tls.source=secret \
+  --set ingress.tls.source=external \
   --set ingress.ingressClassName=nginx \
   --set replicas=${var.rancher_replicas} \
   --wait --timeout 10m
 
-echo "[$(date)] Done: https://$RANCHER_HOSTNAME"
+echo "[$(date)] Rancher installed successfully!"
+echo "[$(date)] Add DNS record:"
+echo "[$(date)]   ${var.rancher_hostname} CNAME $NLB_HOSTNAME"
+echo "[$(date)] Then access: https://${var.rancher_hostname}"
 SCRIPT
 
 chmod +x /usr/local/bin/install-tools.sh
@@ -195,5 +189,8 @@ echo "Userdata complete"
     InstanceType = var.bastion_instance_type
   })
 
-  depends_on = [aws_eks_cluster.main]
+  depends_on = [
+    aws_eks_cluster.main,
+    aws_eks_node_group.main
+  ]
 }

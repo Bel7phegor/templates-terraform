@@ -268,3 +268,15 @@ variable "rancher_replicas" {
   type        = number
   default     = 1
 }
+
+variable "rancher_hostname" {
+  description = "Domain truy cập Rancher"
+  type        = string
+  default     = "rancher.anphuc.site"
+}
+
+variable "acm_certificate_arn" {
+  description = "ARN của ACM certificate"
+  type        = string
+  default     = ""
+}
