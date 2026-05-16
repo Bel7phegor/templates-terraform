@@ -115,7 +115,7 @@ helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --set controller.config.proxy-real-ip-cidr="0.0.0.0/0" \
   --set controller.config.ssl-redirect="false" \
   --set controller.config.force-ssl-redirect="false" \
-  --wait --timeout 10m
+  --timeout 10m
 
 echo "[$(date)] ingress-nginx installed."
 kubectl get svc -n ingress-nginx
