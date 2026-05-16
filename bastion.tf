@@ -79,13 +79,17 @@ aws eks update-kubeconfig \
 echo 'export KUBECONFIG=/root/.kube/config' >> /root/.bashrc
 echo 'export KUBECONFIG=/root/.kube/config' >> /home/ubuntu/.bashrc
 
-# install-tools script
 cat > /usr/local/bin/install-tools.sh << 'SCRIPT'
 #!/bin/bash
 set -e
 exec >> /var/log/install-tools.log 2>&1
 
 export KUBECONFIG=/root/.kube/config
+
+echo "[$(date)] Waiting for nodes to be ready..."
+kubectl wait --for=condition=Ready nodes --all --timeout=600s
+echo "[$(date)] All nodes ready."
+kubectl get nodes
 
 echo "[$(date)] Installing ingress-nginx with ACM certificate..."
 PUBLIC_SUBNET_1="${aws_subnet.public[0].id}"
@@ -111,14 +115,14 @@ helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --set controller.config.proxy-real-ip-cidr="0.0.0.0/0" \
   --set controller.config.ssl-redirect="false" \
   --set controller.config.force-ssl-redirect="false" \
-  --wait --timeout 5m
+  --wait --timeout 10m
 
 echo "[$(date)] ingress-nginx installed."
 kubectl get svc -n ingress-nginx
 
-echo "[$(date)] Getting NLB hostname..."
+echo "[$(date)] Waiting for NLB hostname..."
 NLB_HOSTNAME=""
-for i in $(seq 1 30); do
+for i in $(seq 1 40); do
   NLB_HOSTNAME=$(kubectl get svc ingress-nginx-controller \
     -n ingress-nginx \
     -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
@@ -126,12 +130,12 @@ for i in $(seq 1 30); do
     echo "[$(date)] NLB hostname: $NLB_HOSTNAME"
     break
   fi
-  echo "[$(date)] Waiting for NLB... attempt $i/30"
+  echo "[$(date)] Waiting for NLB... attempt $i/40"
   sleep 15
 done
 
 if [ -z "$NLB_HOSTNAME" ]; then
-  echo "[$(date)] ERROR: NLB hostname not available"
+  echo "[$(date)] ERROR: NLB hostname not available after 10 minutes"
   kubectl describe svc ingress-nginx-controller -n ingress-nginx
   exit 1
 fi
@@ -139,10 +143,6 @@ fi
 echo "[$(date)] Installing Rancher..."
 helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
 helm repo update
-
-NLB_HOSTNAME=$(kubectl get svc ingress-nginx-controller \
-  -n ingress-nginx \
-  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 
 helm upgrade --install rancher rancher-stable/rancher \
   --namespace cattle-system \
@@ -154,17 +154,14 @@ helm upgrade --install rancher rancher-stable/rancher \
   --set replicas=${var.rancher_replicas} \
   --wait --timeout 10m
 
-# Patch annotation dạng string để tránh lỗi bool
 kubectl annotate ingress rancher \
   -n cattle-system \
   "nginx.ingress.kubernetes.io/ssl-redirect=false" \
   "nginx.ingress.kubernetes.io/force-ssl-redirect=false" \
   --overwrite
 
-echo "[$(date)] Rancher installed successfully!"
-echo "[$(date)] Add DNS record:"
-echo "[$(date)]   ${var.rancher_hostname} CNAME $NLB_HOSTNAME"
-echo "[$(date)] Then access: https://${var.rancher_hostname}"
+echo "[$(date)] Done: https://${var.rancher_hostname}"
+echo "[$(date)] DNS: ${var.rancher_hostname} CNAME $NLB_HOSTNAME"
 SCRIPT
 
 chmod +x /usr/local/bin/install-tools.sh
