@@ -139,29 +139,6 @@ if [ -z "$NLB_HOSTNAME" ]; then
   kubectl describe svc ingress-nginx-controller -n ingress-nginx
   exit 1
 fi
-
-echo "[$(date)] Installing Rancher..."
-helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
-helm repo update
-
-helm upgrade --install rancher rancher-stable/rancher \
-  --namespace cattle-system \
-  --create-namespace \
-  --set hostname=${var.rancher_hostname} \
-  --set bootstrapPassword=${var.rancher_bootstrap_password} \
-  --set ingress.tls.source=external \
-  --set ingress.ingressClassName=nginx \
-  --set replicas=${var.rancher_replicas} \
-  --wait --timeout 10m
-
-kubectl annotate ingress rancher \
-  -n cattle-system \
-  "nginx.ingress.kubernetes.io/ssl-redirect=false" \
-  "nginx.ingress.kubernetes.io/force-ssl-redirect=false" \
-  --overwrite
-
-echo "[$(date)] Done: https://${var.rancher_hostname}"
-echo "[$(date)] DNS: ${var.rancher_hostname} CNAME $NLB_HOSTNAME"
 SCRIPT
 
 chmod +x /usr/local/bin/install-tools.sh

@@ -1,134 +1,93 @@
-# Terraform VPC — lab-test
+﻿# Terraform AWS VPC and EKS Sample
 
-Khởi tạo hạ tầng AWS gồm VPC, Subnets, Internet Gateway, NAT Gateway và Route Tables.
+This repository contains Terraform configuration to provision an AWS lab environment with reusable networking and EKS infrastructure. The sample deploys a VPC with public and private subnets, optional NAT gateway support, an EKS cluster, an optional node group, and a bastion host for secure cluster access.
 
-## Cấu trúc thư mục
+## What this project builds
 
-```
-.
-├── main.tf
-├── variables.tf
-├── vpc.tf
-├── igw.tf
-├── nat.tf
-├── routes.tf
-├── outputs.tf
-├── terraform.tfvars.example
-├── .gitignore
-└── README.md
-```
+- AWS VPC with a configurable CIDR block
+- Public and private subnets across multiple availability zones
+- Internet Gateway and public route table
+- Optional NAT gateway deployment for private subnet internet access
+- EKS cluster with configurable endpoint access
+- Optional EKS managed node group or EKS auto mode
+- Bastion host with SSH access
+- Security groups for EKS control plane, worker nodes, and bastion
+- Cleanup helper to remove Network Load Balancers during destroy
 
-## Kiến trúc
+## Repository layout
 
-```
-VPC: lab-test (10.0.0.0/16)
-│
-├── public-1a  (10.0.1.0/24)  ──┐
-├── public-1b  (10.0.2.0/24)  ──┴──► Route Table Public ──► IGW ──► Internet
-│
-│   [NAT Gateway + EIP] ← đặt tại public-1a
-│
-├── private-1a (10.0.11.0/24) ──► Route Table private-1a ──► NAT GW
-└── private-1b (10.0.12.0/24) ──► Route Table private-1b ──► NAT GW
-```
+- `main.tf` - provider, backend and core configuration
+- `variables.tf` - variable definitions and defaults
+- `local.tf` - computed locals and creation conditions
+- `vpc.tf` - VPC and subnets
+- `igw.tf` - Internet Gateway
+- `nat.tf` - NAT Gateway and Elastic IP
+- `routes.tf` - route tables and associations
+- `sg.tf` - security groups for EKS and bastion
+- `eks.tf` - EKS cluster and access entry
+- `nodegroup.tf` - EKS managed node group
+- `outputs.tf` - exported output values
+- `cleanup.tf` - destroy-time cleanup for NLBs
+- `install-tools.sh` - installation script for ingress and Rancher
+- `setup-tools.sh` - Terraform install helper for Ubuntu
+- `environments/dev/terraform.tfvars` - development variables
+- `environments/prod/terraform.tfvars` - production variables
+- `.gitignore`
+- `README.md`
 
-## Yêu cầu
+## Prerequisites
 
-- Terraform >= 1.3.0
-- AWS CLI >= 2.0
-- IAM Role gắn vào EC2 với các quyền: VPC, Subnet, IGW, NAT Gateway, Elastic IP, Route Table, Tags
+- Terraform 1.3 or later
+- AWS CLI 2 or later
+- AWS credentials configured locally
+- IAM roles already created for EKS cluster, node group, and bastion host
+- S3 backend bucket and DynamoDB lock table available for Terraform state
 
-## Feature Flags
+## Configuration
 
-Các tính năng được bật/tắt qua `variables.tf` hoặc `terraform.tfvars`:
+The project uses `variables.tf` for defaults and environment files under `environments/` for deployment settings.
 
-| Biến | Mặc định | Mô tả |
-|---|---|---|
-| `enable_dns_support` | `true` | DNS resolution trong VPC |
-| `enable_dns_hostnames` | `true` | DNS hostnames cho EC2 |
-| `map_public_ip_on_launch` | `true` | Tự động gán Public IP tại public subnet |
-| `enable_igw` | `true` | Tạo Internet Gateway |
-| `enable_nat_gateway` | `true` | Tạo NAT Gateway |
-| `single_nat_gateway` | `true` | `true` = 1 NAT dùng chung, `false` = mỗi AZ 1 NAT |
-
-Ví dụ cấu hình theo môi trường:
-
-```hcl
-# Dev — tắt NAT để tiết kiệm chi phí
-enable_nat_gateway = false
-
-# Staging — bật NAT, dùng chung
-enable_nat_gateway = true
-single_nat_gateway = true
-
-# Production — mỗi AZ 1 NAT (High Availability)
-enable_nat_gateway = true
-single_nat_gateway = false
-```
-
-## Khởi chạy
+Use one of the provided variable files:
 
 ```bash
-# 1. Khởi tạo provider
-terraform init
-
-# 2. Kiểm tra cú pháp
-terraform validate
-
-# 3. Xem plan
-terraform plan
-
-# 4. Apply
-terraform apply
+terraform apply -var-file=environments/dev/terraform.tfvars
+terraform apply -var-file=environments/prod/terraform.tfvars
 ```
 
-## Kiểm tra sau khi apply
-
-```bash
-# Danh sách resources đã tạo
-terraform state list
-
-# Chi tiết từng resource
-terraform state show aws_vpc.main
-terraform state show aws_nat_gateway.main[0]
-
-# Output values
-terraform output
-```
-
-## Cập nhật
-
-```bash
-# Sửa file .tf hoặc .tfvars, sau đó
-terraform plan
-terraform apply
-```
-
-Override biến tạm thời không cần sửa file:
+You can also override individual values at runtime:
 
 ```bash
 terraform apply -var="enable_nat_gateway=false"
 ```
 
-## Xóa infrastructure
+## Deployment
+
+Initialize Terraform and apply the configuration:
 
 ```bash
-terraform destroy
+terraform init
+terraform validate
+terraform plan -var-file=environments/dev/terraform.tfvars
+terraform apply -var-file=environments/dev/terraform.tfvars
 ```
 
-## Troubleshooting
+If you change backend settings or move environments, update the backend configuration and re-run `terraform init`.
 
-**Lỗi credentials:**
+## Destroy
+
+Destroy the deployed infrastructure when it is no longer needed:
+
 ```bash
-aws sts get-caller-identity
+terraform destroy -var-file=environments/dev/terraform.tfvars
 ```
 
-**State bị lệch với thực tế:**
-```bash
-terraform refresh
-```
+## Post-deployment
 
-**Lỗi state lock:**
-```bash
-terraform force-unlock <LOCK_ID>
-```
+The `install-tools.sh` script can be used after cluster provisioning to install ingress-nginx and Rancher. The `setup-tools.sh` script installs Terraform on Ubuntu.
+
+## Notes
+
+- The sample backend is configured for S3 with DynamoDB locking.
+- `enable_nat_gateway` controls whether NAT gateway resources are created.
+- `single_nat_gateway` controls whether one NAT gateway is shared across AZs or one per AZ.
+- `enable_eks_auto_mode` enables EKS auto mode and disables the managed node group.
